@@ -312,6 +312,7 @@ func getPrice3(symbol string) (price3 float64, err error) { //АМЕРИКАНС
 	return
 }
 
+//ФУНКЦИЯ ПОЛУЧЕНИЯ КУРСА ДОЛЛАРА ЧЕРЕЗ МОСБИРЖУ
 func getPriceUSD() (price4 float64, err error) {
 
 	resp2, _ := http.Get(fmt.Sprintf("https://query1.finance.yahoo.com/v10/finance/quoteSummary/USDRUB.ME?modules=price"))
