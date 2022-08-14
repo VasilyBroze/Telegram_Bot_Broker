@@ -19,6 +19,20 @@ type bnResp struct { //BINANCE
 	Code  int64   `json:"code"`
 }
 
+/*
+type MoexStock struct {
+	MarketdataYields struct {
+		Data []interface{} `json:"data"` //ЗДЕСЬ ИНТЕРЕСУЕТ [12] 13ый элемент интерфейса
+	} `json:"marketdata_yields"`
+}
+*/
+
+type MoexStock struct {
+	Marketdata struct {
+		Data [][]interface{} `json:"data"` //interface
+	} `json:"marketdata"`
+}
+
 type yfResp struct { //YAHOO FINANCE
 	QuoteSummary struct {
 		Result []struct {
@@ -46,7 +60,7 @@ func main() {
 		log.Panic(err)
 	}
 
-	bot.Debug = false
+	bot.Debug = true
 
 	//log.Printf("Authorized on account %s", bot.Self.UserName)
 
@@ -161,20 +175,32 @@ func main() {
 			rows, _ := database.Query("SELECT ticker, amount FROM people WHERE chat_id = ?", update.Message.Chat.ID)
 			var ticker string
 			var amount float64
-
+			usd, _ := getPriceUSD()
 			//ПРОВЕРЯЕМ ВСЕ ДАННЫЕ В ТАБЛИЦЕ ПО ЧАТ ID
 			for rows.Next() {
+				var rub bool
 				rows.Scan(&ticker, &amount)
 				price, _ := getPrice(ticker) //BINANCE
 				if price == 0 {
-					price, _ = getPrice2(ticker) //YAHOO RUS
+					price, _ = getPrice2(ticker) //MOEX
 					if price == 0 {
 						price, _ = getPrice3(ticker) //YAHOO
+						sum += amount * price
+					} else {
+						rub = true
+						sum += amount * price / usd
 					}
+				} else {
+					sum += amount * price
 				}
+
 				sum += amount * price
 				if price != 0 {
-					msg += fmt.Sprintf("%s: %v [%.2f USD] (Цена: %.2f)\n", ticker, amount, amount*price, price)
+					if rub == false {
+						msg += fmt.Sprintf("%s: %v [%.2f USD] (Цена: %.2f)\n", ticker, amount, amount*price, price)
+					} else {
+						msg += fmt.Sprintf("%s: %v [%.2f USD] (Цена: %.2f)\n", ticker, amount, amount*price/usd, price/usd)
+					}
 				} else {
 					msg += fmt.Sprintf("%s: %v [%.2f USD (Тикер не найден)]\n", ticker, amount, amount*price)
 				}
@@ -193,18 +219,28 @@ func main() {
 
 			//ПРОВЕРЯЕМ ВСЕ ДАННЫЕ В ТАБЛИЦЕ ПО ЧАТ ID
 			for rows.Next() {
+				var rub bool
 				rows.Scan(&ticker, &amount)
 				price, _ := getPrice(ticker) //BINANCE
 				if price == 0 {
-					price, _ = getPrice2(ticker) //YAHOO RUS
+					price, _ = getPrice2(ticker) //MOEX
 					if price == 0 {
 						price, _ = getPrice3(ticker) //YAHOO
+						sum += amount * price * usd
+					} else {
+						rub = true
+						sum += amount * price
 					}
+				} else {
+					sum += amount * price * usd
 				}
 
-				sum += amount * price * usd
 				if price != 0 {
-					msg += fmt.Sprintf("%s: %v [%.2f RUB] (Цена: %.2f)\n", ticker, amount, amount*price*usd, price*usd)
+					if rub == false {
+						msg += fmt.Sprintf("%s: %v [%.2f RUB] (Цена: %.2f)\n", ticker, amount, amount*price*usd, price*usd)
+					} else {
+						msg += fmt.Sprintf("%s: %v [%.2f RUB] (Цена: %.2f)\n", ticker, amount, amount*price, price)
+					}
 				} else {
 					msg += fmt.Sprintf("%s: %v [%.2f RUB (Тикер не найден)]\n", ticker, amount, amount*price)
 				}
@@ -251,7 +287,7 @@ func getPrice(symbol string) (price float64, err error) {
 }
 
 func getPrice2(symbol string) (price2 float64, err error) { //РУБЛЁВЫЕ АКЦИИ
-	resp, _ := http.Get(fmt.Sprintf("https://query1.finance.yahoo.com/v10/finance/quoteSummary/%s.ME?modules=price", symbol))
+	resp, _ := http.Get(fmt.Sprintf("https://iss.moex.com/iss/engines/stock/markets/shares/securities.json?securities=%v", symbol))
 
 	if err != nil {
 		return
@@ -262,8 +298,8 @@ func getPrice2(symbol string) (price2 float64, err error) { //РУБЛЁВЫЕ �
 	defer resp.Body.Close()
 	defer resp2.Body.Close()
 
-	var jsonResp yfResp
-	var jsonRespUSD yfResp
+	var jsonResp MoexStock
+	//var jsonRespUSD yfResp
 
 	body, err := ioutil.ReadAll(resp.Body)
 
@@ -271,18 +307,39 @@ func getPrice2(symbol string) (price2 float64, err error) { //РУБЛЁВЫЕ �
 		panic(err)
 	}
 
-	body2, err := ioutil.ReadAll(resp2.Body)
+	if jsonResp.Marketdata.Data != nil {
 
-	if err := json.Unmarshal(body2, &jsonRespUSD); err != nil {
-		panic(err)
-	}
+		for i := 0; i < len(jsonResp.Marketdata.Data); i++ {
 
-	if jsonResp.QuoteSummary.Error != nil {
+			if jsonResp.Marketdata.Data[i][1] == "TQBR" {
+
+				actualprice := jsonResp.Marketdata.Data[i][12]
+				switch s := actualprice.(type) {
+				case float64:
+					price2 = s
+					return
+				case float32:
+					price2 = float64(s)
+					return
+				case int64:
+					price2 = float64(s)
+					return
+				}
+				return
+			}
+		}
+
 		return
 	}
 
-	price2 = (jsonResp.QuoteSummary.Result[0].Price.RegularMarketPrice.Raw) / (jsonRespUSD.QuoteSummary.Result[0].Price.RegularMarketPrice.Raw)
+	/*	body2, err := ioutil.ReadAll(resp2.Body)
 
+		if err := json.Unmarshal(body2, &jsonRespUSD); err != nil {
+			panic(err)
+		}
+
+		//price2 = (jsonResp.QuoteSummary.Result[0].Price.RegularMarketPrice.Raw) / (jsonRespUSD.QuoteSummary.Result[0].Price.RegularMarketPrice.Raw)
+	*/
 	return
 }
 
@@ -315,7 +372,7 @@ func getPrice3(symbol string) (price3 float64, err error) { //АМЕРИКАНС
 //ФУНКЦИЯ ПОЛУЧЕНИЯ КУРСА ДОЛЛАРА ЧЕРЕЗ МОСБИРЖУ
 func getPriceUSD() (price4 float64, err error) {
 
-	resp2, _ := http.Get(fmt.Sprintf("https://query1.finance.yahoo.com/v10/finance/quoteSummary/USDRUB.ME?modules=price"))
+	resp2, _ := http.Get(fmt.Sprintf("https://query1.finance.yahoo.com/v10/finance/quoteSummary/RUB=X?modules=price"))
 
 	defer resp2.Body.Close()
 
