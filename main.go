@@ -222,10 +222,16 @@ func main() {
 				var rub bool
 				rows.Scan(&ticker, &amount)
 				price, _ := getPrice(ticker) //BINANCE
+				fmt.Println("Binance TEST Ticker")
+				fmt.Println(price)
 				if price == 0 {
 					price, _ = getPrice2(ticker) //MOEX
+					fmt.Println("MOEX TEST Ticker")
+					fmt.Println(price)
 					if price == 0 {
 						price, _ = getPrice3(ticker) //YAHOO
+						fmt.Println("Yahoo TEST Ticker")
+						fmt.Println(price)
 						sum += amount * price * usd
 					} else {
 						rub = true
@@ -265,6 +271,7 @@ func main() {
 }
 
 func getPrice(symbol string) (price float64, err error) {
+	fmt.Println("Зашли в апи бинанс")
 	resp, err := http.Get(fmt.Sprintf("https://api.binance.com/api/v3/ticker/price?symbol=%sUSDT", symbol))
 	if err != nil {
 		return
@@ -283,18 +290,25 @@ func getPrice(symbol string) (price float64, err error) {
 	}
 
 	price = jsonResp.Price
+	fmt.Println("Вышли из апи бинанс")
 	return
 }
 
 func getPrice2(symbol string) (price2 float64, err error) { //РУБЛЁВЫЕ АКЦИИ
-	resp, _ := http.Get(fmt.Sprintf("https://iss.moex.com/iss/engines/stock/markets/shares/securities.json?securities=%v", symbol))
+	fmt.Println("Зашли в апи моекс")
+	resp, err := http.Get(fmt.Sprintf("https://iss.moex.com/iss/engines/stock/markets/shares/securities.json?securities=%v", symbol))
 
 	if err != nil {
+		fmt.Println("Ошибка моекс")
+		fmt.Println(err)
 		return
 	}
-
-	resp2, _ := http.Get(fmt.Sprintf("https://query1.finance.yahoo.com/v10/finance/quoteSummary/USDRUB.ME?modules=price"))
-
+	fmt.Println("Зашли в апи яху бакс")
+	resp2, err := http.Get(fmt.Sprintf("https://query1.finance.yahoo.com/v10/finance/quoteSummary/USDRUB.ME?modules=price"))
+	if err != nil {
+		fmt.Println("Ошибка яху бакс")
+		return
+	}
 	defer resp.Body.Close()
 	defer resp2.Body.Close()
 
@@ -344,6 +358,7 @@ func getPrice2(symbol string) (price2 float64, err error) { //РУБЛЁВЫЕ �
 }
 
 func getPrice3(symbol string) (price3 float64, err error) { //АМЕРИКАНСКИЕ АКЦИИ
+	fmt.Println("Зашли в апи яху")
 	resp, _ := http.Get(fmt.Sprintf("https://query1.finance.yahoo.com/v10/finance/quoteSummary/%s?modules=price", symbol))
 
 	if err != nil {
@@ -365,11 +380,11 @@ func getPrice3(symbol string) (price3 float64, err error) { //АМЕРИКАНС
 	}
 
 	price3 = (jsonResp.QuoteSummary.Result[0].Price.RegularMarketPrice.Raw)
-
+	fmt.Println("Вышли из апи яху")
 	return
 }
 
-//ФУНКЦИЯ ПОЛУЧЕНИЯ КУРСА ДОЛЛАРА ЧЕРЕЗ МОСБИРЖУ
+// ФУНКЦИЯ ПОЛУЧЕНИЯ КУРСА ДОЛЛАРА ЧЕРЕЗ МОСБИРЖУ
 func getPriceUSD() (price4 float64, err error) {
 
 	resp2, _ := http.Get(fmt.Sprintf("https://query1.finance.yahoo.com/v10/finance/quoteSummary/RUB=X?modules=price"))
